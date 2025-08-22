@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Interval Timer</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      text-align: center;
+      background-color: #222;
+      color: #fff;
+    }
+
+    .container {
+      max-width: 500px;
+      margin: auto;
+      padding: 2rem;
+    }
+
+    input, textarea, button {
+      font-size: 1.2rem;
+      padding: 0.5rem;
+      margin: 0.3rem;
+    }
+
+    #timerDisplay {
+      font-size: 6rem;
+      margin-top: 2rem;
+    }
+
+    #phaseLabel {
+      font-size: 3rem;
+      margin-top: 1rem;
+    }
+
+    #nextPhaseLabel {
+      font-size: 3rem;
+      margin-top: 0.5rem;
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Interval Timer</h1>
+
+    <div id="routineInputContainer">
+      <label>Routine (e.g. Markdown):</label><br/>
+      <textarea id="routineInput" rows="10" style="width:100%;resize:vertical;">## Warm-Up
+- Jumping Jacks: 15s
+- High Knees: 15s
+- Rest: 15s
+
+## Main Set (Repeat 3x)
+- Push-Ups: 10s
+- Squats: 10s
+- Lunges: 10s
+- Rest: 15s
+
+## Cool Down
+- Stretch: 15s</textarea>
+    </div>
+
+    <div>
+      <button id="startBtn" onclick="startTimer()">Start</button>
+      <button id="pauseBtn" onclick="pauseTimer()" style="display:none;">Pause</button>
+      <button onclick="skipPhase()">Skip</button>
+      <button onclick="resetTimer()">Reset</button>
+    </div>
+
+    <div>
+      <label><input type="checkbox" id="beepToggle" checked> Beep last 3&nbsp;s</label>
+    </div>
+
+    <audio id="beepSound" src="media/StartBeeps.wav" preload="auto"></audio>
+
+    <div id="timerDisplay">00:00</div>
+    <div id="phaseLabel">Idle</div>
+    <div id="nextPhaseLabel"></div>
+  </div>
+
+  <script>
+    let timer = null;
+    let currentIndex = 0;
+    let routinePhases = [];
+    let timeLeft = 0;   // remaining seconds for current phase
+    let paused = false;
+    let tickFunc = null;
+
+    const beepAudio = new Audio('media/StartBeeps.wav');
+    beepAudio.preload = 'auto';
+
+    
+    function parseRoutine(input) {
+      return parseMarkdownWorkout(input);
+    }
+
+    function startTimer() {
+      // Resume if we were paused
+      if (paused && !timer) {
+        paused = false;
+        document.getElementById('startBtn').style.display = 'none';
+        document.getElementById('pauseBtn').style.display = 'inline-block';
+        timer = setInterval(tickFunc, 1000);
+        return;
+      }
+
+      // Prevent multiple timers running
+      if (timer) return;
+
+      // Fresh start
+      // hide routine input
+      document.getElementById('routineInputContainer').style.display = 'none';
+      const input = document.getElementById('routineInput').value;
+      routinePhases = parseRoutine(input);
+      currentIndex = 0;
+      document.getElementById('startBtn').style.display = 'none';
+      document.getElementById('pauseBtn').style.display = 'inline-block';
+      runPhase();
+    }
+
+    function runPhase() {
+      if (currentIndex >= routinePhases.length) {
+        updateDisplay("00:00", "Complete", "#444");
+        document.getElementById('routineInputContainer').style.display = 'block';
+        document.getElementById('startBtn').style.display = 'inline-block';
+      document.getElementById('pauseBtn').style.display = 'none';
+        document.getElementById('nextPhaseLabel').textContent = '';
+        return;
+      }
+
+      const { type, duration } = routinePhases[currentIndex];
+      timeLeft = duration;
+      //updateDisplay(formatTime(timeLeft), type.toUpperCase(), getPhaseColor(type, timeLeft));
+      updateDisplay(formatTime(timeLeft), routinePhases[currentIndex].label, getPhaseColor(routinePhases[currentIndex].label.toLowerCase(), timeLeft));
+      document.getElementById('nextPhaseLabel').textContent = '';
+
+      tickFunc = function() {
+        timeLeft--;
+
+        if (timeLeft <= 0) {
+          clearInterval(timer);
+          timer = null;
+          currentIndex++;
+          runPhase();
+        } else {
+            if (timeLeft <= 3) {
+              const nextPhaseObj = routinePhases[currentIndex + 1];
+              const nextLabel = nextPhaseObj ? nextPhaseObj.label : 'Complete';
+              document.getElementById('nextPhaseLabel').textContent = 'Next: ' + nextLabel;
+
+              if (document.getElementById('beepToggle').checked && beepAudio.paused) {
+                beepAudio.currentTime = 0;
+                beepAudio.play();
+              }
+            }
+
+            updateDisplay(
+              formatTime(timeLeft),
+              routinePhases[currentIndex].label,
+              getPhaseColor(routinePhases[currentIndex].label.toLowerCase(), timeLeft)
+            );
+        }
+          }
+
+      timer = setInterval(tickFunc, 1000);
+    }
+
+    function pauseTimer() {
+      // Pause current countdown but keep state
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      paused = true;
+      document.getElementById('startBtn').style.display = 'inline-block';
+      document.getElementById('pauseBtn').style.display = 'none';
+    }
+
+    
+
+    function skipPhase() {
+      // Advance to the next phase immediately
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      if (routinePhases.length === 0) return;
+      currentIndex++;
+      runPhase();
+    }
+
+    function resetTimer() {
+      clearInterval(timer);
+      timer = null;
+      paused = false;
+      document.getElementById('startBtn').style.display = 'inline-block';
+      document.getElementById('pauseBtn').style.display = 'none';
+      timeLeft = 0;
+      updateDisplay("00:00", "Idle", "#222");
+      document.getElementById('routineInputContainer').style.display = 'block';
+      document.getElementById('nextPhaseLabel').textContent = '';
+    }
+
+    function updateDisplay(time, label, bgColor) {
+      document.getElementById('timerDisplay').textContent = time;
+      document.getElementById('phaseLabel').textContent = label;
+      document.body.style.backgroundColor = bgColor;
+    }
+
+    function formatTime(sec) {
+      const m = String(Math.floor(sec / 60)).padStart(2, '0');
+      const s = String(sec % 60).padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    function getPhaseColor(label, timeLeft) {
+      const lower = (label || '').toLowerCase();
+      if (lower.startsWith('rest')) return '#007bff'; // blue for rest phases
+      if (timeLeft <= 3) return '#ff0000';   // red in last 3 sec
+      if (timeLeft <= 5) return '#ffc107';  // yellow
+      return '#28a745';                      // green for work phases
+    }
+
+    function parseMarkdownWorkout(mdText) {
+        const lines = mdText.split('\n').map(l => l.trim()).filter(l => l);
+        const routine = [];
+        let currentBlock = [];
+        let repeatCount = 1;
+        let inRepeatBlock = false;
+
+        for (let line of lines) {
+            // Section header
+            const sectionHeader = line.match(/^##\s+(.*?)(?:\s+\(Repeat\s+(\d+)x\))?$/i);
+            if (sectionHeader) {
+                // Flush the previous block before starting a new section
+                if (currentBlock.length > 0) {
+                    if (inRepeatBlock) {
+                        routine.push({ repeat: repeatCount, block: currentBlock });
+                    } else {
+                        routine.push(...currentBlock);
+                    }
+                    currentBlock = [];
+                    repeatCount = 1;
+                }
+
+                inRepeatBlock = !!sectionHeader[2];
+                repeatCount = inRepeatBlock ? parseInt(sectionHeader[2], 10) : 1;
+                continue;
+            }
+
+            // Exercise line
+            const exerciseMatch = line.match(/^-?\s*(.+?):\s*(\d+)s$/i);
+            if (exerciseMatch) {
+                const label = exerciseMatch[1].trim();
+                const duration = parseInt(exerciseMatch[2]);
+                currentBlock.push({ label, duration });
+            }
+        }
+
+        // Push last block
+        if (currentBlock.length > 0) {
+            if (inRepeatBlock) {
+            routine.push({ repeat: repeatCount, block: currentBlock });
+            } else {
+            routine.push(...currentBlock);
+            }
+        }
+
+        // Flatten repeat blocks
+        const flattened = [];
+        for (const item of routine) {
+            if (item.repeat) {
+            for (let i = 1; i <= item.repeat; i++) {
+                for (const step of item.block) {
+                flattened.push({
+                    ...step,
+                    label: `${step.label} (${i}/${item.repeat})`
+                });
+                }
+            }
+            } else {
+            flattened.push(item);
+            }
+        }
+
+        //console.log('Flattened routine:', flattened);
+        return flattened;
+    }
+
+  </script>
+</body>
+</html>
